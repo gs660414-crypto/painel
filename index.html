@@ -1,0 +1,248 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Painel Modo Ascensão</title>
+<style>
+  :root{--bg:#0f1115;--card:#181b22;--bd:#2a2f3a;--tx:#e8eaf0;--mut:#8b93a5;--ac:#7c5cff;--ok:#2ecc71;--er:#ff5c5c;--wa:#f5a623}
+  @media (prefers-color-scheme: light){:root{--bg:#f4f5f8;--card:#fff;--bd:#dfe2ea;--tx:#1b1e27;--mut:#667085}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,sans-serif}
+  header{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--bd)}
+  header h1{font-size:17px;margin:0}
+  main{max-width:900px;margin:0 auto;padding:16px;display:grid;gap:16px}
+  .card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:16px}
+  label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
+  input,textarea,select{width:100%;padding:10px;border-radius:8px;border:1px solid var(--bd);background:transparent;color:var(--tx);font:inherit}
+  textarea{min-height:110px;resize:vertical}
+  .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+  button{padding:10px 16px;border:0;border-radius:8px;background:var(--ac);color:#fff;font:inherit;cursor:pointer}
+  button.sec{background:transparent;border:1px solid var(--bd);color:var(--tx)}
+  button.del{background:transparent;color:var(--er);border:1px solid var(--bd);padding:6px 10px;font-size:13px}
+  .thumbs{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+  .thumbs div{position:relative}
+  .thumbs img{width:72px;height:72px;object-fit:cover;border-radius:8px;border:1px solid var(--bd)}
+  .thumbs b{position:absolute;top:-6px;right:-6px;background:var(--er);color:#fff;border-radius:50%;width:20px;height:20px;text-align:center;line-height:20px;cursor:pointer;font-size:12px}
+  .chk{display:flex;align-items:center;gap:8px;margin-top:12px}
+  .chk input{width:auto}
+  .post{display:grid;gap:6px;padding:12px 0;border-top:1px solid var(--bd)}
+  .post:first-child{border-top:0}
+  .tag{display:inline-block;padding:2px 8px;border-radius:99px;font-size:12px;border:1px solid var(--bd)}
+  .s-publicado{color:var(--ok)} .s-agendado{color:var(--wa)} .s-producao{color:var(--ac)} .s-rascunho{color:var(--mut)}
+  .pend{color:var(--er);font-size:13px}
+  .met{color:var(--mut);font-size:13px}
+  .stats{display:flex;gap:18px;flex-wrap:wrap;color:var(--mut)}
+  .stats b{color:var(--tx);font-size:20px;display:block}
+  #login{max-width:360px;margin:20vh auto;text-align:center}
+  .hide{display:none!important}
+</style>
+</head>
+<body>
+
+<div id="login" class="card hide">
+  <h1>Painel Modo Ascensão</h1>
+  <p class="met">Entre com a conta Google autorizada.</p>
+  <button id="btnEntrar">Entrar com Google</button>
+  <p id="loginErro" class="pend"></p>
+</div>
+
+<div id="app" class="hide">
+  <header>
+    <h1>@mod_oascensao</h1>
+    <div class="stats" id="stats"></div>
+    <button class="sec" id="btnSair">Sair</button>
+  </header>
+  <main>
+    <section class="card">
+      <h2 style="margin:0 0 4px;font-size:16px" id="formTitulo">Novo post</h2>
+      <label>Título (só para você se organizar)</label>
+      <input id="titulo">
+      <div class="row">
+        <div><label>Formato</label>
+          <select id="formato"><option>Carrossel</option><option>Post feed</option><option>Story</option></select></div>
+        <div><label>Data</label><input type="date" id="data"></div>
+        <div><label>Hora</label><input type="time" id="hora"></div>
+      </div>
+      <label>Legenda</label>
+      <textarea id="legenda"></textarea>
+      <label>Imagens (carrossel: até 10, na ordem)</label>
+      <input type="file" id="arquivos" accept="image/*" multiple>
+      <div class="thumbs" id="thumbs"></div>
+      <div class="chk"><input type="checkbox" id="auto" checked><span>Publicar automaticamente no horário</span></div>
+      <p style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:0">
+        <button id="btnSalvar">Agendar</button>
+        <button class="sec" id="btnRascunho">Salvar rascunho</button>
+        <button class="sec hide" id="btnCancelar">Cancelar edição</button>
+      </p>
+      <p id="msg" class="met"></p>
+    </section>
+
+    <section class="card">
+      <h2 style="margin:0 0 4px;font-size:16px">Posts</h2>
+      <div id="lista"></div>
+    </section>
+  </main>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-auth.js";
+import { getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+// ====== COLE AQUI o firebaseConfig do seu projeto ======
+const firebaseConfig = {
+  apiKey: "AIzaSyDGpUzHEeD1CWvIj_2qDhTffvlbABAccoo",
+  authDomain: "modo-ascencao.firebaseapp.com",
+  projectId: "modo-ascencao",
+  storageBucket: "modo-ascencao.firebasestorage.app",
+  messagingSenderId: "950768345065",
+  appId: "1:950768345065:web:be0091e4119bbde0583578"
+};
+// =======================================================
+const EMAIL_PERMITIDO = "gs660414@gmail.com";
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+const $ = id => document.getElementById(id);
+
+let imagens = [];      // itens: {ref:"img:<id>"|"https://...", prev:dataURL}
+let editandoId = null;
+let posts = [];
+
+$("btnEntrar").onclick = async () => {
+  try { await signInWithPopup(auth, new GoogleAuthProvider()); }
+  catch (e) { $("loginErro").textContent = "Não consegui entrar: " + e.code; }
+};
+$("btnSair").onclick = () => signOut(auth);
+
+onAuthStateChanged(auth, async u => {
+  if (u && u.email === EMAIL_PERMITIDO) {
+    $("login").classList.add("hide"); $("app").classList.remove("hide"); iniciar();
+  } else {
+    if (u) { $("loginErro").textContent = "Essa conta não tem acesso."; await signOut(auth); }
+    $("app").classList.add("hide"); $("login").classList.remove("hide");
+  }
+});
+
+let iniciado = false;
+function iniciar() {
+  if (iniciado) return; iniciado = true;
+  onSnapshot(query(collection(db, "posts"), orderBy("data", "desc")), s => {
+    posts = s.docs.map(d => ({ id: d.id, ...d.data() })); renderLista();
+  });
+  onSnapshot(doc(db, "conta", "perfil"), s => {
+    const c = s.data(); if (!c) return;
+    $("stats").innerHTML = `<span><b>${c.seguidores ?? "-"}</b>seguidores</span><span><b>${c.posts ?? "-"}</b>posts</span>`;
+  });
+}
+
+// ---- imagens: comprime no navegador (1080px, JPEG) e guarda no Firestore ----
+function comprimir(file) {
+  return new Promise((ok, err) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const max = 1080, k = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); x.drawImage(img, 0, 0, c.width, c.height);
+      let q = 0.85, out = c.toDataURL("image/jpeg", q);
+      while (out.length > 900000 && q > 0.4) { q -= 0.1; out = c.toDataURL("image/jpeg", q); }
+      URL.revokeObjectURL(url); out.length > 950000 ? err(new Error("Imagem muito pesada")) : ok(out);
+    };
+    img.onerror = () => err(new Error("Arquivo inválido")); img.src = url;
+  });
+}
+
+$("arquivos").onchange = async e => {
+  $("msg").textContent = "Preparando imagens…";
+  try {
+    for (const f of e.target.files) {
+      if (imagens.length >= 10) break;
+      const dados = await comprimir(f);
+      const r = await addDoc(collection(db, "imagens"), { dados, criadoEm: new Date().toISOString() });
+      imagens.push({ ref: "img:" + r.id, prev: dados });
+    }
+    $("msg").textContent = "";
+  } catch (er) { $("msg").textContent = er.message; }
+  e.target.value = ""; renderThumbs();
+};
+
+function renderThumbs() {
+  $("thumbs").innerHTML = "";
+  imagens.forEach((im, i) => {
+    const d = document.createElement("div");
+    d.innerHTML = `<img src="${im.prev}"><b title="Remover">×</b>`;
+    d.querySelector("b").onclick = () => { imagens.splice(i, 1); renderThumbs(); };
+    $("thumbs").appendChild(d);
+  });
+}
+
+// ---- salvar ----
+async function salvar(status) {
+  const titulo = $("titulo").value.trim(), data = $("data").value, hora = $("hora").value;
+  if (!titulo) return $("msg").textContent = "Dê um título.";
+  if (status === "agendado") {
+    if (!data || !hora) return $("msg").textContent = "Escolha data e hora.";
+    if (!imagens.length) return $("msg").textContent = "Adicione ao menos uma imagem.";
+    if ($("formato").value === "Carrossel" && imagens.length < 2) return $("msg").textContent = "Carrossel precisa de 2+ imagens (ou use Post feed).";
+  }
+  const corpo = { titulo, formato: $("formato").value, data, hora, legenda: $("legenda").value, perfil: "@mod_oascensao",
+    imagens: imagens.map(i => i.ref), previas: imagens.map(i => i.prev).slice(0, 1), status, autoPublicar: $("auto").checked && status === "agendado", pendente: "" };
+  if (editandoId) await updateDoc(doc(db, "posts", editandoId), corpo);
+  else await addDoc(collection(db, "posts"), { ...corpo, criadoEm: new Date().toISOString() });
+  limparForm(); $("msg").textContent = status === "agendado" ? "Agendado! O robô publica no horário (checa a cada 30 min)." : "Rascunho salvo.";
+}
+$("btnSalvar").onclick = () => salvar("agendado");
+$("btnRascunho").onclick = () => salvar("rascunho");
+$("btnCancelar").onclick = limparForm;
+
+function limparForm() {
+  editandoId = null; imagens = [];
+  ["titulo", "data", "hora", "legenda"].forEach(i => $(i).value = ""); $("auto").checked = true;
+  $("formTitulo").textContent = "Novo post"; $("btnCancelar").classList.add("hide"); renderThumbs();
+}
+
+async function editar(p) {
+  editandoId = p.id; $("titulo").value = p.titulo || ""; $("formato").value = p.formato || "Carrossel";
+  $("data").value = p.data || ""; $("hora").value = p.hora || ""; $("legenda").value = p.legenda || ""; $("auto").checked = !!p.autoPublicar || p.status === "rascunho";
+  imagens = [];
+  for (const ref of p.imagens || []) {
+    if (ref.startsWith("img:")) {
+      const { getDoc } = await import("https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js");
+      const s = await getDoc(doc(db, "imagens", ref.slice(4))); imagens.push({ ref, prev: s.exists() ? s.data().dados : "" });
+    } else imagens.push({ ref, prev: ref });
+  }
+  $("formTitulo").textContent = "Editando post"; $("btnCancelar").classList.remove("hide"); renderThumbs(); scrollTo({ top: 0, behavior: "smooth" });
+}
+
+// ---- lista ----
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function renderLista() {
+  const el = $("lista");
+  if (!posts.length) { el.innerHTML = '<p class="met">Nenhum post ainda.</p>'; return; }
+  el.innerHTML = "";
+  for (const p of posts) {
+    const d = document.createElement("div"); d.className = "post";
+    const m = p.status === "publicado"
+      ? `<span class="met">❤ ${p.curtidas ?? 0} · 💬 ${p.comentarios ?? 0} · alcance ${p.alcance ?? "-"} · salvos ${p.salvos ?? "-"} · compart. ${p.compartilhamentos ?? "-"}</span>` : "";
+    d.innerHTML = `<div><b>${esc(p.titulo)}</b> <span class="tag s-${esc(p.status)}">${esc(p.status)}</span> <span class="tag">${esc(p.formato)}</span></div>
+      <div class="met">${esc(p.data)} ${esc(p.hora)}${p.autoPublicar ? " · automático" : ""}</div>
+      ${p.pendente ? `<div class="pend">${esc(p.pendente)}</div>` : ""}${m}
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${p.permalink ? `<a href="${esc(p.permalink)}" target="_blank"><button class="sec">Ver no Instagram</button></a>` : ""}
+        ${p.status !== "publicado" && p.status !== "producao" ? `<button class="sec" data-a="ed">Editar</button>` : ""}
+        ${p.status !== "producao" ? `<button class="del" data-a="rm">Excluir</button>` : ""}
+      </div>`;
+    d.querySelector('[data-a="ed"]')?.addEventListener("click", () => editar(p));
+    d.querySelector('[data-a="rm"]')?.addEventListener("click", async () => {
+      if (!confirm("Excluir do painel? (Não apaga do Instagram)")) return;
+      await deleteDoc(doc(db, "posts", p.id));
+      for (const r of p.imagens || []) if (r.startsWith("img:")) deleteDoc(doc(db, "imagens", r.slice(4))).catch(() => {});
+    });
+    el.appendChild(d);
+  }
+}
+</script>
+</body>
+</html>
